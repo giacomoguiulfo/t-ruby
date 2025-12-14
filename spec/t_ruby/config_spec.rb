@@ -450,38 +450,10 @@ describe TRuby::Config do
     end
   end
 
-  describe "output.preserve_structure" do
-    it "returns true by default" do
-      Dir.mktmpdir do |tmpdir|
-        Dir.chdir(tmpdir) do
-          config = TRuby::Config.new
-          expect(config.preserve_structure?).to be true
-        end
-      end
-    end
-
-    it "returns false when set to false" do
-      yaml = <<~YAML
-        output:
-          preserve_structure: false
-      YAML
-
-      create_config(yaml) do |config|
-        expect(config.preserve_structure?).to be false
-      end
-    end
-
-    it "returns true when set to true" do
-      yaml = <<~YAML
-        output:
-          preserve_structure: true
-      YAML
-
-      create_config(yaml) do |config|
-        expect(config.preserve_structure?).to be true
-      end
-    end
-  end
+  # NOTE: preserve_structure option has been removed
+  # Directory structure is now always preserved based on source_include configuration:
+  # - Single source_include: excludes source dir name (src/models/user.trb → build/models/user.rb)
+  # - Multiple source_include: includes source dir name (src/models/user.trb → build/src/models/user.rb)
 
   describe "output.rbs_dir" do
     it "returns nil by default (uses ruby_dir)" do
@@ -711,7 +683,6 @@ describe TRuby::Config do
         expect(TRuby::Config::DEFAULT_CONFIG).to have_key("output")
         expect(TRuby::Config::DEFAULT_CONFIG["output"]).to have_key("ruby_dir")
         expect(TRuby::Config::DEFAULT_CONFIG["output"]).to have_key("rbs_dir")
-        expect(TRuby::Config::DEFAULT_CONFIG["output"]).to have_key("preserve_structure")
         expect(TRuby::Config::DEFAULT_CONFIG["output"]).to have_key("clean_before_build")
       end
 
@@ -763,14 +734,12 @@ describe TRuby::Config do
           output:
             ruby_dir: dist
             rbs_dir: sig
-            preserve_structure: false
             clean_before_build: true
         YAML
 
         create_config(yaml) do |config|
           expect(config.output["ruby_dir"]).to eq("dist")
           expect(config.output["rbs_dir"]).to eq("sig")
-          expect(config.output["preserve_structure"]).to eq(false)
           expect(config.output["clean_before_build"]).to eq(true)
         end
       end
@@ -837,7 +806,6 @@ describe TRuby::Config do
             config = TRuby::Config.new
             expect(config.output["ruby_dir"]).to eq("build")
             expect(config.output["rbs_dir"]).to be_nil
-            expect(config.output["preserve_structure"]).to eq(true)
             expect(config.output["clean_before_build"]).to eq(false)
           end
         end

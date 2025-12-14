@@ -105,7 +105,6 @@ module TRuby
           output:
             ruby_dir: #{build_dir}
             # rbs_dir: sig  # Optional: separate directory for .rbs files
-            preserve_structure: true
             # clean_before_build: false
 
           compiler:

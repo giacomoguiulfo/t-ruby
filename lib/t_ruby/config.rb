@@ -19,7 +19,6 @@ module TRuby
       "output" => {
         "ruby_dir" => "build",
         "rbs_dir" => nil,
-        "preserve_structure" => true,
         "clean_before_build" => false,
       },
       "compiler" => {
@@ -70,12 +69,6 @@ module TRuby
     # @return [String] RBS output directory (defaults to ruby_dir if not specified)
     def rbs_dir
       @output["rbs_dir"] || ruby_dir
-    end
-
-    # Check if source directory structure should be preserved in output
-    # @return [Boolean] true if structure should be preserved
-    def preserve_structure?
-      @output["preserve_structure"] != false
     end
 
     # Check if output directory should be cleaned before build

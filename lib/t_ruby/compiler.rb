@@ -38,29 +38,27 @@ module TRuby
       # Transform source to Ruby code
       output = @use_ir ? transform_with_ir(source, parser) : transform_legacy(source, parse_result)
 
-      out_dir = @config.out_dir
-      FileUtils.mkdir_p(out_dir)
-
-      base_filename = File.basename(input_path, ".trb")
-      output_path = File.join(out_dir, "#{base_filename}.rb")
+      # Compute output path (respects preserve_structure setting)
+      output_path = compute_output_path(input_path, @config.ruby_dir, ".rb")
+      FileUtils.mkdir_p(File.dirname(output_path))
 
       File.write(output_path, output)
 
       # Generate .rbs file if enabled in config
       if @config.compiler["generate_rbs"]
-        rbs_dir = @config.rbs_dir
-        FileUtils.mkdir_p(rbs_dir)
+        rbs_path = compute_output_path(input_path, @config.rbs_dir, ".rbs")
+        FileUtils.mkdir_p(File.dirname(rbs_path))
         if @use_ir && parser.ir_program
-          generate_rbs_from_ir(base_filename, rbs_dir, parser.ir_program)
+          generate_rbs_from_ir_to_path(rbs_path, parser.ir_program)
         else
-          generate_rbs_file(base_filename, rbs_dir, parse_result)
+          generate_rbs_file_to_path(rbs_path, parse_result)
         end
       end
 
       # Generate .d.trb file if enabled in config (legacy support)
       # TODO: Add compiler.generate_dtrb option in future
       if @config.compiler.key?("generate_dtrb") && @config.compiler["generate_dtrb"]
-        generate_dtrb_file(input_path, out_dir)
+        generate_dtrb_file(input_path, @config.ruby_dir)
       end
 
       output_path
@@ -161,7 +159,69 @@ module TRuby
       @optimizer&.stats
     end
 
+    # Compute output path for a source file
+    # @param input_path [String] path to source file
+    # @param output_dir [String] base output directory
+    # @param new_extension [String] new file extension (e.g., ".rb", ".rbs")
+    # @return [String] computed output path (always preserves directory structure)
+    def compute_output_path(input_path, output_dir, new_extension)
+      relative = compute_relative_path(input_path)
+      base = relative.sub(/\.[^.]+$/, new_extension)
+      File.join(output_dir, base)
+    end
+
+    # Compute relative path from source directory
+    # @param input_path [String] path to source file
+    # @return [String] relative path preserving directory structure
+    def compute_relative_path(input_path)
+      # Use realpath to resolve symlinks (e.g., /var vs /private/var on macOS)
+      absolute_input = resolve_path(input_path)
+      source_dirs = @config.source_include
+
+      # Check if file is inside any source_include directory
+      if source_dirs.size > 1
+        # Multiple source directories: include the source dir name in output
+        # src/models/user.trb → src/models/user.trb
+        source_dirs.each do |src_dir|
+          absolute_src = resolve_path(src_dir)
+          next unless absolute_input.start_with?("#{absolute_src}/")
+
+          # Return path relative to parent of source dir (includes src dir name)
+          parent_of_src = File.dirname(absolute_src)
+          return absolute_input.sub("#{parent_of_src}/", "")
+        end
+      else
+        # Single source directory: exclude the source dir name from output
+        # src/models/user.trb → models/user.trb
+        src_dir = source_dirs.first
+        if src_dir
+          absolute_src = resolve_path(src_dir)
+          if absolute_input.start_with?("#{absolute_src}/")
+            return absolute_input.sub("#{absolute_src}/", "")
+          end
+        end
+      end
+
+      # File outside source directories: use path relative to current working directory
+      # external/foo.trb → external/foo.trb
+      cwd = resolve_path(".")
+      if absolute_input.start_with?("#{cwd}/")
+        return absolute_input.sub("#{cwd}/", "")
+      end
+
+      # Absolute path from outside cwd: use basename only
+      File.basename(input_path)
+    end
+
     private
+
+    # Resolve path to absolute path, following symlinks
+    # Falls back to expand_path if realpath fails (e.g., file doesn't exist yet)
+    def resolve_path(path)
+      File.realpath(path)
+    rescue Errno::ENOENT
+      File.expand_path(path)
+    end
 
     def setup_declaration_paths
       # Add default declaration paths
@@ -197,30 +257,29 @@ module TRuby
       end
     end
 
-    # Generate RBS from IR
-    def generate_rbs_from_ir(base_filename, out_dir, ir_program)
+    # Generate RBS from IR to a specific path
+    def generate_rbs_from_ir_to_path(rbs_path, ir_program)
       generator = IR::RBSGenerator.new
       rbs_content = generator.generate(ir_program)
-
-      rbs_path = File.join(out_dir, "#{base_filename}.rbs")
       File.write(rbs_path, rbs_content) unless rbs_content.strip.empty?
     end
 
-    # Legacy RBS generation
-    def generate_rbs_file(base_filename, out_dir, parse_result)
+    # Legacy RBS generation to a specific path
+    def generate_rbs_file_to_path(rbs_path, parse_result)
       generator = RBSGenerator.new
       rbs_content = generator.generate(
         parse_result[:functions] || [],
         parse_result[:type_aliases] || []
       )
-
-      rbs_path = File.join(out_dir, "#{base_filename}.rbs")
       File.write(rbs_path, rbs_content) unless rbs_content.empty?
     end
 
     def generate_dtrb_file(input_path, out_dir)
+      dtrb_path = compute_output_path(input_path, out_dir, DeclarationGenerator::DECLARATION_EXTENSION)
+      FileUtils.mkdir_p(File.dirname(dtrb_path))
+
       generator = DeclarationGenerator.new
-      generator.generate_file(input_path, out_dir)
+      generator.generate_file_to_path(input_path, dtrb_path)
     end
 
     # Copy .rb file to output directory and generate .rbs signature
@@ -229,28 +288,25 @@ module TRuby
         raise ArgumentError, "File not found: #{input_path}"
       end
 
-      out_dir = @config.out_dir
-      FileUtils.mkdir_p(out_dir)
-
-      base_filename = File.basename(input_path, ".rb")
-      output_path = File.join(out_dir, "#{base_filename}.rb")
+      # Compute output path (respects preserve_structure setting)
+      output_path = compute_output_path(input_path, @config.ruby_dir, ".rb")
+      FileUtils.mkdir_p(File.dirname(output_path))
 
       # Copy the .rb file to output directory
       FileUtils.cp(input_path, output_path)
 
       # Generate .rbs file if enabled in config
       if @config.compiler["generate_rbs"]
-        rbs_dir = @config.rbs_dir
-        FileUtils.mkdir_p(rbs_dir)
-        generate_rbs_from_ruby(base_filename, rbs_dir, input_path)
+        rbs_path = compute_output_path(input_path, @config.rbs_dir, ".rbs")
+        FileUtils.mkdir_p(File.dirname(rbs_path))
+        generate_rbs_from_ruby_to_path(rbs_path, input_path)
       end
 
       output_path
     end
 
-    # Generate RBS from Ruby file using rbs prototype
-    def generate_rbs_from_ruby(base_filename, out_dir, input_path)
-      rbs_path = File.join(out_dir, "#{base_filename}.rbs")
+    # Generate RBS from Ruby file using rbs prototype to a specific path
+    def generate_rbs_from_ruby_to_path(rbs_path, input_path)
       result = `rbs prototype rb #{input_path} 2>/dev/null`
       File.write(rbs_path, result) unless result.strip.empty?
     end

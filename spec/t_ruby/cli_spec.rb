@@ -117,6 +117,8 @@ describe TRuby::CLI do
           File.write(input_file, "def hello; end")
 
           allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(tmpdir)
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(tmpdir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([tmpdir])
 
           cli = TRuby::CLI.new([input_file])
           capture_stdout { cli.run }

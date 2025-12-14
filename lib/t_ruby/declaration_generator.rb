@@ -64,6 +64,23 @@ module TRuby
       output_path
     end
 
+    # Generate declaration file to a specific output path
+    def generate_file_to_path(input_path, output_path)
+      unless File.exist?(input_path)
+        raise ArgumentError, "File not found: #{input_path}"
+      end
+
+      unless input_path.end_with?(".trb")
+        raise ArgumentError, "Expected .trb file, got: #{input_path}"
+      end
+
+      source = File.read(input_path)
+      content = generate(source)
+
+      File.write(output_path, content)
+      output_path
+    end
+
     private
 
     def generate_type_alias(type_alias)

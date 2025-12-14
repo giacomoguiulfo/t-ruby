@@ -88,9 +88,9 @@ RSpec.describe "Config Options E2E Behavior" do
     end
   end
 
-  describe "output.preserve_structure" do
-    context "when true (default)" do
-      it "preserves directory structure in output" do
+  describe "directory structure preservation" do
+    context "with single source_include directory" do
+      it "excludes source dir name from output path" do
         Dir.chdir(tmpdir) do
           create_config_file(<<~YAML)
             source:
@@ -98,7 +98,6 @@ RSpec.describe "Config Options E2E Behavior" do
                 - src
             output:
               ruby_dir: build
-              preserve_structure: true
           YAML
 
           create_trb_file("src/models/user.trb", <<~TRB)
@@ -111,37 +110,36 @@ RSpec.describe "Config Options E2E Behavior" do
           compiler = TRuby::Compiler.new(config)
           compiler.compile(File.join(tmpdir, "src/models/user.trb"))
 
-          # NOTE: Current compiler puts files in root of build dir
-          # This test documents expected behavior, not current implementation
-          expect(File.exist?(File.join(tmpdir, "build/user.rb"))).to be true
+          # Single source_include: src/models/user.trb → build/models/user.rb
+          expect(File.exist?(File.join(tmpdir, "build/models/user.rb"))).to be true
         end
       end
     end
 
-    # NOTE: preserve_structure: false is not yet implemented
-    context "when false" do
-      xit "flattens output to single directory" do
+    context "with multiple source_include directories" do
+      it "includes source dir name in output path" do
         Dir.chdir(tmpdir) do
           create_config_file(<<~YAML)
             source:
               include:
                 - src
+                - lib
             output:
               ruby_dir: build
-              preserve_structure: false
           YAML
 
-          create_trb_file("src/deep/nested/file.trb", <<~TRB)
-            def nested_func: void
-              puts "hello"
+          create_trb_file("src/models/user.trb", <<~TRB)
+            def find_user(id: Integer): String
+              "user"
             end
           TRB
 
           config = TRuby::Config.new
           compiler = TRuby::Compiler.new(config)
-          compiler.compile(File.join(tmpdir, "src/deep/nested/file.trb"))
+          compiler.compile(File.join(tmpdir, "src/models/user.trb"))
 
-          expect(File.exist?(File.join(tmpdir, "build/file.rb"))).to be true
+          # Multiple source_include: src/models/user.trb → build/src/models/user.rb
+          expect(File.exist?(File.join(tmpdir, "build/src/models/user.rb"))).to be true
         end
       end
     end

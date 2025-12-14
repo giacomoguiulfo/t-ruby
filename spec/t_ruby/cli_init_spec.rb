@@ -27,7 +27,6 @@ describe TRuby::CLI do
 
         expect(config["output"]).to be_a(Hash)
         expect(config["output"]["ruby_dir"]).to eq("build")
-        expect(config["output"]["preserve_structure"]).to eq(true)
 
         expect(config["compiler"]).to be_a(Hash)
         expect(config["compiler"]["generate_rbs"]).to eq(true)

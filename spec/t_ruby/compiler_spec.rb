@@ -45,6 +45,8 @@ describe TRuby::Compiler do
           File.write(input_file, "puts 'test'")
 
           allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(tmpdir)
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(tmpdir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([tmpdir])
 
           compiler = TRuby::Compiler.new(config)
           output_path = compiler.compile(input_file)
@@ -61,6 +63,8 @@ describe TRuby::Compiler do
 
           output_dir = File.join(tmpdir, "nested", "build")
           allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(output_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(output_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([tmpdir])
 
           compiler = TRuby::Compiler.new(config)
           compiler.compile(input_file)
@@ -249,6 +253,186 @@ describe TRuby::Compiler do
           output_path = compiler.compile(input_file)
 
           expect(File.read(output_path)).to eq(large_content)
+        end
+      end
+    end
+
+    context "with directory structure preservation" do
+      it "preserves directory structure with single source_include" do
+        Dir.mktmpdir do |tmpdir|
+          # Create nested source directory
+          src_dir = File.join(tmpdir, "src")
+          nested_dir = File.join(src_dir, "models", "user")
+          FileUtils.mkdir_p(nested_dir)
+
+          input_file = File.join(nested_dir, "account.trb")
+          File.write(input_file, "puts 'account'")
+
+          out_dir = File.join(tmpdir, "build")
+
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src_dir])
+          allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => false })
+
+          compiler = TRuby::Compiler.new(config)
+          output_path = compiler.compile(input_file)
+
+          # Single source_include: exclude source dir name
+          # src/models/user/account.trb → build/models/user/account.rb
+          expected_path = File.join(out_dir, "models", "user", "account.rb")
+          expect(output_path).to eq(expected_path)
+          expect(File.exist?(output_path)).to be true
+        end
+      end
+
+      it "preserves relative path for files outside source directories" do
+        Dir.mktmpdir do |tmpdir|
+          Dir.chdir(tmpdir) do
+            # Create source directory and a file outside it
+            src_dir = File.join(tmpdir, "src")
+            FileUtils.mkdir_p(src_dir)
+
+            external_dir = File.join(tmpdir, "external")
+            FileUtils.mkdir_p(external_dir)
+
+            input_file = File.join(external_dir, "external.trb")
+            File.write(input_file, "puts 'external'")
+
+            out_dir = File.join(tmpdir, "build")
+
+            allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src_dir])
+            allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => false })
+
+            compiler = TRuby::Compiler.new(config)
+            output_path = compiler.compile(input_file)
+
+            # File outside source directories: preserve relative path from cwd
+            # external/external.trb → build/external/external.rb
+            expected_path = File.join(out_dir, "external", "external.rb")
+            expect(output_path).to eq(expected_path)
+            expect(File.exist?(output_path)).to be true
+          end
+        end
+      end
+
+      it "preserves structure for .rb files when copying" do
+        Dir.mktmpdir do |tmpdir|
+          # Create nested source directory
+          src_dir = File.join(tmpdir, "src")
+          nested_dir = File.join(src_dir, "lib", "utils")
+          FileUtils.mkdir_p(nested_dir)
+
+          input_file = File.join(nested_dir, "helper.rb")
+          File.write(input_file, "puts 'helper'")
+
+          out_dir = File.join(tmpdir, "build")
+
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src_dir])
+          allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => false })
+
+          compiler = TRuby::Compiler.new(config)
+          output_path = compiler.compile(input_file)
+
+          # Should preserve the nested structure
+          expected_path = File.join(out_dir, "lib", "utils", "helper.rb")
+          expect(output_path).to eq(expected_path)
+          expect(File.exist?(output_path)).to be true
+        end
+      end
+
+      it "generates RBS files with preserved structure" do
+        Dir.mktmpdir do |tmpdir|
+          # Create nested source directory
+          src_dir = File.join(tmpdir, "src")
+          nested_dir = File.join(src_dir, "services")
+          FileUtils.mkdir_p(nested_dir)
+
+          input_file = File.join(nested_dir, "auth.trb")
+          File.write(input_file, "def login(user: String): Boolean\n  true\nend")
+
+          out_dir = File.join(tmpdir, "build")
+          rbs_dir = File.join(tmpdir, "sig")
+
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(rbs_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src_dir])
+          allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => true })
+
+          compiler = TRuby::Compiler.new(config)
+          compiler.compile(input_file)
+
+          # Check RBS file is in the right place
+          expected_rbs_path = File.join(rbs_dir, "services", "auth.rbs")
+          expect(File.exist?(expected_rbs_path)).to be true
+        end
+      end
+
+      it "includes source dir name with multiple source_include directories" do
+        Dir.mktmpdir do |tmpdir|
+          # Create two source directories
+          src1 = File.join(tmpdir, "app")
+          src2 = File.join(tmpdir, "lib")
+          FileUtils.mkdir_p(File.join(src1, "models"))
+          FileUtils.mkdir_p(File.join(src2, "utils"))
+
+          input_file1 = File.join(src1, "models", "user.trb")
+          input_file2 = File.join(src2, "utils", "helper.trb")
+          File.write(input_file1, "puts 'user'")
+          File.write(input_file2, "puts 'helper'")
+
+          out_dir = File.join(tmpdir, "build")
+
+          allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+          allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src1, src2])
+          allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => false })
+
+          compiler = TRuby::Compiler.new(config)
+
+          output1 = compiler.compile(input_file1)
+          output2 = compiler.compile(input_file2)
+
+          # Multiple source_include: include source dir name
+          # app/models/user.trb → build/app/models/user.rb
+          # lib/utils/helper.trb → build/lib/utils/helper.rb
+          expect(output1).to eq(File.join(out_dir, "app", "models", "user.rb"))
+          expect(output2).to eq(File.join(out_dir, "lib", "utils", "helper.rb"))
+        end
+      end
+
+      it "handles file in current directory" do
+        Dir.mktmpdir do |tmpdir|
+          Dir.chdir(tmpdir) do
+            input_file = File.join(tmpdir, "hello.trb")
+            File.write(input_file, "puts 'hello'")
+
+            out_dir = File.join(tmpdir, "build")
+            src_dir = File.join(tmpdir, "src")
+
+            allow_any_instance_of(TRuby::Config).to receive(:ruby_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:rbs_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:out_dir).and_return(out_dir)
+            allow_any_instance_of(TRuby::Config).to receive(:source_include).and_return([src_dir])
+            allow_any_instance_of(TRuby::Config).to receive(:compiler).and_return({ "generate_rbs" => false })
+
+            compiler = TRuby::Compiler.new(config)
+            output_path = compiler.compile(input_file)
+
+            # File in cwd: hello.trb → build/hello.rb
+            expected_path = File.join(out_dir, "hello.rb")
+            expect(output_path).to eq(expected_path)
+            expect(File.exist?(output_path)).to be true
+          end
         end
       end
     end
