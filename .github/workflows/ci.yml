@@ -82,67 +82,6 @@ jobs:
           file: coverage/lcov.info
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # VSCode 플러그인 빌드
-  vscode:
-    name: VSCode Plugin
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: editors/vscode
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: editors/vscode/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Compile
-        run: npm run compile
-
-  # JetBrains 플러그인 빌드
-  jetbrains:
-    name: JetBrains Plugin
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: editors/jetbrains
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
-
-      - name: Build plugin
-        run: ./gradlew buildPlugin
-
-      - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: jetbrains-plugin
-          path: editors/jetbrains/build/distributions/*.zip
-
   # 문서 예제 검증
   docs-verify:
     name: Docs Verification
@@ -165,7 +104,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [test, lint, coverage, vscode, jetbrains]
+    needs: [test, lint, coverage]
     if: always()
 
     steps:
@@ -173,9 +112,7 @@ jobs:
         run: |
           if [[ "${{ needs.test.result }}" == "failure" ]] || \
              [[ "${{ needs.lint.result }}" == "failure" ]] || \
-             [[ "${{ needs.coverage.result }}" == "failure" ]] || \
-             [[ "${{ needs.vscode.result }}" == "failure" ]] || \
-             [[ "${{ needs.jetbrains.result }}" == "failure" ]]; then
+             [[ "${{ needs.coverage.result }}" == "failure" ]]; then
             echo "CI failed"
             exit 1
           fi

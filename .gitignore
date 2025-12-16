@@ -15,11 +15,6 @@ ignore/
 .rspec_status
 *.lcov
 
-# VSCode extension build artifacts
-editors/vscode/out/
-editors/vscode/node_modules/
-editors/vscode/*.vsix
-
 .env*
 
 ignore/
