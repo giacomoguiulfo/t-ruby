@@ -256,7 +256,7 @@ watch:
 
 **IDE Support**
 - [VS Code Extension (and Cursor)](https://github.com/type-ruby/t-ruby-vscode)
-- [JetBrains Plugin](./docs/jetbrains/en/getting-started.md)
+- [JetBrains Plugin](https://github.com/type-ruby/t-ruby-jetbrains)
 - [Vim Setup](./docs/vim/en/getting-started.md)
 - [Neovim Setup](./docs/neovim/en/getting-started.md)
 
