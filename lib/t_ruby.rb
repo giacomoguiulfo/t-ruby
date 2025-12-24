@@ -11,6 +11,7 @@ require_relative "t_ruby/smt_solver"
 
 # Basic components
 require_relative "t_ruby/type_alias_registry"
+require_relative "t_ruby/body_parser"
 require_relative "t_ruby/parser"
 require_relative "t_ruby/union_type_parser"
 require_relative "t_ruby/generic_type_parser"
@@ -29,6 +30,8 @@ require_relative "t_ruby/constraint_checker"
 require_relative "t_ruby/type_inferencer"
 require_relative "t_ruby/runtime_validator"
 require_relative "t_ruby/type_checker"
+require_relative "t_ruby/type_env"
+require_relative "t_ruby/ast_type_inferrer"
 require_relative "t_ruby/cache"
 require_relative "t_ruby/package_manager"
 

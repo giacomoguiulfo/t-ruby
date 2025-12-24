@@ -83,19 +83,31 @@ module TRuby
 
     # Class declaration
     class ClassDecl < Node
-      attr_accessor :name, :superclass, :implements, :type_params, :body
+      attr_accessor :name, :superclass, :implements, :type_params, :body, :instance_vars
 
-      def initialize(name:, superclass: nil, implements: [], type_params: [], body: [], **opts)
+      def initialize(name:, superclass: nil, implements: [], type_params: [], body: [], instance_vars: [], **opts)
         super(**opts)
         @name = name
         @superclass = superclass
         @implements = implements
         @type_params = type_params
         @body = body
+        @instance_vars = instance_vars
       end
 
       def children
         @body
+      end
+    end
+
+    # Instance variable declaration
+    class InstanceVariable < Node
+      attr_accessor :name, :type_annotation
+
+      def initialize(name:, type_annotation: nil, **opts)
+        super(**opts)
+        @name = name
+        @type_annotation = type_annotation
       end
     end
 
@@ -686,6 +698,11 @@ module TRuby
           declarations << build_interface(interface_info)
         end
 
+        # Build classes
+        (parse_result[:classes] || []).each do |class_info|
+          declarations << build_class(class_info)
+        end
+
         # Build functions/methods
         (parse_result[:functions] || []).each do |func_info|
           declarations << build_method(func_info)
@@ -724,6 +741,28 @@ module TRuby
         )
       end
 
+      def build_class(info)
+        # Build methods
+        methods = (info[:methods] || []).map do |method_info|
+          build_method(method_info)
+        end
+
+        # Build instance variables
+        instance_vars = (info[:instance_vars] || []).map do |ivar|
+          InstanceVariable.new(
+            name: ivar[:name],
+            type_annotation: ivar[:type] ? parse_type(ivar[:type]) : nil
+          )
+        end
+
+        ClassDecl.new(
+          name: info[:name],
+          superclass: info[:superclass],
+          body: methods,
+          instance_vars: instance_vars
+        )
+      end
+
       def build_method(info)
         params = (info[:params] || []).map do |param|
           Parameter.new(
@@ -732,10 +771,14 @@ module TRuby
           )
         end
 
+        # 본문 IR이 있으면 사용 (BodyParser에서 파싱됨)
+        body = info[:body_ir]
+
         MethodDef.new(
           name: info[:name],
           params: params,
-          return_type: info[:return_type] ? parse_type(info[:return_type]) : nil
+          return_type: info[:return_type] ? parse_type(info[:return_type]) : nil,
+          body: body
         )
       end
 
@@ -947,9 +990,12 @@ module TRuby
     class RBSGenerator < Visitor
       attr_reader :output
 
-      def initialize
+      def initialize(enable_inference: true)
         @output = []
         @indent = 0
+        @enable_inference = enable_inference
+        @inferrer = TRuby::ASTTypeInferrer.new if enable_inference
+        @class_env = nil # 현재 클래스의 타입 환경
       end
 
       def generate(program)
@@ -988,19 +1034,57 @@ module TRuby
       def visit_method_def(node)
         params = node.params.map do |param|
           type = param.type_annotation&.to_rbs || "untyped"
-          "#{type} #{param.name}"
+          "#{param.name}: #{type}"
         end.join(", ")
 
-        return_type = node.return_type&.to_rbs || "untyped"
+        # 반환 타입: 명시적 타입 > 추론된 타입 > untyped
+        return_type = node.return_type&.to_rbs
+
+        # initialize 메서드는 특별 처리: 명시적 타입이 없으면 void
+        # Ruby에서 initialize는 생성자이며, 실제 인스턴스 생성은 Class.new가 담당
+        if node.name == "initialize" && return_type.nil?
+          return_type = "void"
+        elsif return_type.nil? && @enable_inference && @inferrer && node.body
+          # 명시적 반환 타입이 없으면 추론 시도
+          inferred = @inferrer.infer_method_return_type(node, @class_env)
+          return_type = inferred if inferred && inferred != "untyped"
+        end
+
+        return_type ||= "untyped"
         emit("def #{node.name}: (#{params}) -> #{return_type}")
       end
 
       def visit_class_decl(node)
         emit("class #{node.name}")
         @indent += 1
+
+        # 클래스 타입 환경 생성
+        @class_env = TRuby::TypeEnv.new if @enable_inference
+
+        # 인스턴스 변수 타입 등록
+        (node.instance_vars || []).each do |ivar|
+          if @class_env && ivar.type_annotation
+            @class_env.define_instance_var("@#{ivar.name}", ivar.type_annotation.to_rbs)
+          end
+
+          # Emit instance variables first
+          visit_instance_variable(ivar)
+        end
+
+        # Add blank line between ivars and methods if both exist
+        @output << "" if node.instance_vars&.any? && node.body&.any?
+
+        # Emit methods
         node.body.each { |member| visit(member) }
+
+        @class_env = nil
         @indent -= 1
         emit("end")
+      end
+
+      def visit_instance_variable(node)
+        type = node.type_annotation&.to_rbs || "untyped"
+        emit("@#{node.name}: #{type}")
       end
 
       private
