@@ -360,7 +360,7 @@ RSpec.describe TRuby::IR do
 
       output = generator.generate(program)
 
-      expect(output).to include("def greet: (String name) -> String")
+      expect(output).to include("def greet: (name: String) -> String")
     end
   end
 

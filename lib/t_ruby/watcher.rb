@@ -248,17 +248,21 @@ module TRuby
       files = []
 
       # Always search in source_include directories only
-      source_dirs = if @paths == [File.expand_path(".")]
-                      @config.source_include.map { |dir| File.expand_path(dir) }
-                    else
-                      @paths.map { |path| File.expand_path(path) }
-                    end
+      source_paths = if @paths == [File.expand_path(".")]
+                       @config.source_include.map { |dir| File.expand_path(dir) }
+                     else
+                       @paths.map { |path| File.expand_path(path) }
+                     end
 
-      source_dirs.each do |dir|
-        next unless Dir.exist?(dir)
-
-        Dir.glob(File.join(dir, "**", "*#{ext}")).each do |file|
-          files << file unless @config.excluded?(file)
+      source_paths.each do |path|
+        if File.file?(path)
+          # Handle single file path
+          files << path if path.end_with?(ext) && !@config.excluded?(path)
+        elsif Dir.exist?(path)
+          # Handle directory path
+          Dir.glob(File.join(path, "**", "*#{ext}")).each do |file|
+            files << file unless @config.excluded?(file)
+          end
         end
       end
 
